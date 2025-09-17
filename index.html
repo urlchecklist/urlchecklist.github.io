@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>URL Checker – Chrome / Firefox / Edge</title>
+  <style>
+    :root{
+      --bg:#0b1020;           /* deep navy */
+      --card:#111833;         /* dark slate */
+      --muted:#8ea0b5;        /* slate gray */
+      --text:#eaf1ff;         /* off‑white */
+      --accent:#4ba3ff;       /* blue */
+      --ok:#2ecc71;           /* green */
+      --warn:#f1c40f;         /* yellow */
+      --bad:#e74c3c;          /* red */
+      --border:rgba(255,255,255,.08);
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji;
+      color:var(--text); background: radial-gradient(1200px 600px at 20% -10%, #1b2955 0%, transparent 60%),
+                          radial-gradient(900px 600px at 120% 10%, #1a3a6b 0%, transparent 50%), var(--bg);
+      display:grid; place-items:center; padding: 24px;
+    }
+    .app{ width:min(920px, 95vw); }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    header{
+      padding:28px 28px 8px 28px; display:flex; align-items:center; gap:14px;
+    }
+    header .logo{ width:44px; height:44px; display:grid; place-items:center; border-radius:14px; background:linear-gradient(135deg,#4ba3ff55,#4ba3ff22); border:1px solid var(--border) }
+    header h1{ margin:0; font-size: clamp(20px, 2.2vw, 26px); letter-spacing:.3px }
+    header p{ margin:6px 0 0 0; color:var(--muted); font-size: 14px }
+
+    .content{ padding: 24px 28px 28px 28px; display:grid; gap:16px }
+
+    .row{ display:flex; gap:12px; flex-wrap:wrap }
+
+    .input{
+      flex:1 1 420px; display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius: 14px;
+      border:1px solid var(--border); background: #0f1630; outline:none;
+    }
+    .input input{
+      background:transparent; border:none; outline:none; color:var(--text); font-size:16px; width:100%;
+    }
+    .btn{
+      cursor:pointer; user-select:none; border:none; border-radius:14px; padding:12px 18px; font-weight:600;
+      background: linear-gradient(180deg, #4ba3ff, #2a7fe6); color:white; box-shadow: 0 6px 18px rgba(75,163,255,.35);
+      transition: transform .05s ease; display:inline-flex; align-items:center; gap:10px;
+    }
+    .btn:disabled{ opacity:.6; cursor:not-allowed; box-shadow:none }
+    .btn:active{ transform: translateY(1px); }
+    .btn.secondary{ background:transparent; border:1px solid var(--border); color:var(--text); box-shadow:none }
+
+    .meta{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; color:var(--muted); font-size:14px }
+    .pill{ padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#0e1530 }
+
+    .results{ display:grid; gap:12px; margin-top:8px }
+
+    .result{
+      border:1px solid var(--border); border-radius:14px; padding:16px; background:#0f1734; display:grid; gap:10px
+    }
+
+    .status{ display:flex; align-items:center; gap:10px; font-weight:700 }
+    .status.ok{ color:var(--ok) }
+    .status.warn{ color:var(--warn) }
+    .status.bad{ color:var(--bad) }
+
+    .grid{ display:grid; grid-template-columns: 1fr; gap:10px }
+    @media (min-width: 720px){ .grid{ grid-template-columns: 1.2fr .8fr } }
+
+    .log{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:13px; background:#0b1228; border:1px solid var(--border);
+      border-radius:10px; padding:12px; max-height:180px; overflow:auto; white-space:pre-wrap }
+
+    .hint{ color:var(--muted); font-size:13px }
+
+    a.inline { color:#b9d9ff; text-decoration:underline; text-underline-offset:2px }
+
+    .spinner{ width:16px; height:16px; border:2px solid #ffffff44; border-top-color:#fff; border-radius:50%; animation: spin 1s linear infinite }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+
+    .footer{
+      padding: 0 28px 20px 28px; color:var(--muted); font-size:12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="app card">
+    <header>
+      <div class="logo" aria-hidden="true">
+        <!-- minimalist globe icon -->
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" stroke="#77b6ff" stroke-width="1.4" />
+          <path d="M3 12h18M12 3c3 3.7 3 13.3 0 18M12 3c-3 3.7-3 13.3 0 18" stroke="#77b6ff" stroke-width="1.2"/>
+        </svg>
+      </div>
+      <div>
+        <h1>URL Checker</h1>
+        <p>Quickly test if a site is reachable from your current browser. Open this page in Chrome, Firefox, and Edge to compare.</p>
+      </div>
+    </header>
+
+    <section class="content">
+      <form id="checkForm" class="row" autocomplete="off">
+        <div class="input" role="group" aria-label="Enter a URL to test">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.9 12a5 5 0 0 1 5-5h1.2M13.9 17a5 5 0 0 1-5 5H7.7" stroke="#9cc7ff" stroke-width="1.3"/><path d="M9 12h6" stroke="#9cc7ff" stroke-width="1.3"/></svg>
+          <input id="urlInput" name="url" type="text" inputmode="url" placeholder="https://example.com" aria-label="URL" required />
+        </div>
+        <button id="checkBtn" class="btn" type="submit">
+          <span class="spinner" id="spin" style="display:none"></span>
+          <span id="btnText">Check now</span>
+        </button>
+        <button class="btn secondary" type="button" id="resetBtn">Reset</button>
+      </form>
+
+      <div class="meta">
+        <span class="pill" id="uaPill"></span>
+        <span class="pill" id="timePill"></span>
+      </div>
+
+      <div class="grid">
+        <div class="results">
+          <div class="result" id="summary" hidden>
+            <div class="status" id="summaryStatus">Ready</div>
+            <div class="hint" id="summaryHint"></div>
+          </div>
+
+          <div class="result" id="steps" hidden>
+            <div class="status">Checks</div>
+            <div class="log" id="log"></div>
+          </div>
+        </div>
+
+        <aside class="result" id="tips">
+          <div class="status">Notes</div>
+          <ul class="hint" style="margin:6px 0 0 16px; line-height:1.6">
+            <li><strong>This page runs in your current browser</strong>. To compare Chrome, Firefox, and Edge, open this same page in each browser and run the check.</li>
+            <li>Many sites block cross‑origin status checks. We use a mix of safe techniques (fetch + favicon image) that won’t hurt your site.</li>
+            <li>If you own the target site and want detailed status codes, enable CORS for this origin or add a small health endpoint.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <div class="footer">
+      <span>Privacy‑friendly: no data is sent to any server. All checks run in your browser.</span>
+    </div>
+  </main>
+
+  <script>
+    // ---- Utilities ----
+    function detectBrowser(){
+      const ua = navigator.userAgent;
+      if (/Edg\//.test(ua)) return 'Microsoft Edge';
+      if (/Firefox\//.test(ua)) return 'Mozilla Firefox';
+      if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) return 'Google Chrome';
+      if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) return 'Apple Safari';
+      return 'Unknown Browser';
+    }
+
+    function nowString(){
+      const d = new Date();
+      return d.toLocaleString();
+    }
+
+    function log(line){
+      const el = document.getElementById('log');
+      el.textContent += line + "\n";
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function setBusy(isBusy){
+      document.getElementById('checkBtn').disabled = isBusy;
+      document.getElementById('spin').style.display = isBusy ? 'inline-block' : 'none';
+      document.getElementById('btnText').textContent = isBusy ? 'Checking…' : 'Check now';
+    }
+
+    function setSummary(status, hint){
+      const box = document.getElementById('summary');
+      const s = document.getElementById('summaryStatus');
+      box.hidden = false;
+      s.className = 'status ' + (status === 'ok' ? 'ok' : status === 'warn' ? 'warn' : status === 'bad' ? 'bad' : '');
+      s.textContent = status === 'ok' ? 'Working' : status === 'warn' ? 'Reachable (limited)' : status === 'bad' ? 'Not reachable' : 'Result';
+      document.getElementById('summaryHint').textContent = hint || '';
+    }
+
+    function normalizeUrl(input){
+      const trimmed = (input || '').trim();
+      if (!trimmed) throw new Error('Please enter a URL');
+      // If scheme missing, try https first, then http during checks
+      try{ return new URL(trimmed).href } catch{
+        return 'https://' + trimmed.replace(/^\/*/, '');
+      }
+    }
+
+    function withTimeout(promise, ms, label){
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(label || 'timeout'), ms);
+      return Promise.race([
+        promise(ctrl.signal),
+        new Promise((_,rej) => setTimeout(() => rej(new Error('Timeout after '+ms+'ms')), ms+50))
+      ]).finally(() => clearTimeout(t));
+    }
+
+    async function tryFetch(url, mode){
+      // Return {ok:boolean, status:number|null, opaque:boolean}
+      try{
+        const res = await fetch(url, { method:'GET', mode: mode, cache:'no-store', redirect:'follow' });
+        if (mode === 'no-cors'){
+          // Opaque response: treat as reachable if resolved
+          return { ok: true, status: null, opaque: true };
+        }
+        return { ok: res.ok, status: res.status, opaque: res.type === 'opaque' };
+      }catch(e){
+        return { ok:false, status:null, error: e && e.message ? e.message : String(e) };
+      }
+    }
+
+    function imgPing(url){
+      return new Promise((resolve) => {
+        const img = new Image();
+        const done = (ok) => { resolve(ok); cleanup(); };
+        const cleanup = () => { img.onload = img.onerror = null; img.remove(); };
+        img.onload = () => done(true);
+        img.onerror = () => done(false);
+        img.referrerPolicy = 'no-referrer';
+        img.decoding = 'async';
+        img.src = url + (url.includes('?') ? '&' : '?') + '_hc=' + Date.now();
+      });
+    }
+
+    function ensureFaviconUrl(root){
+      try{ const u = new URL(root); u.pathname = '/favicon.ico'; u.search = ''; u.hash = ''; return u.href } catch{ return root.replace(/\/$/, '') + '/favicon.ico' }
+    }
+
+    async function check(url){
+      document.getElementById('steps').hidden = false;
+      const results = { reachable:false, corsLimited:false, status:null };
+
+      log('• Start: ' + url);
+      // Step 1: CORS-friendly fetch (best quality)
+      log('• Step 1: Fetch with CORS to read status…');
+      let r1 = await tryFetch(url, 'cors');
+      if (r1.ok){
+        results.reachable = true; results.status = r1.status; results.corsLimited = false;
+        log('  ✓ Success (HTTP ' + (r1.status === null ? 'opaque' : r1.status) + ')');
+        return results; // best answer obtained
+      } else {
+        log('  – Could not read status (' + (r1.error || 'likely CORS or network issue') + ')');
+      }
+
+      // Step 2: No‑CORS fetch (reachability only)
+      log('• Step 2: Fetch with no‑CORS (reachability)…');
+      let r2 = await tryFetch(url, 'no-cors');
+      if (r2.ok){
+        results.reachable = true; results.corsLimited = true; // status unknown
+        log('  ✓ Resolved (opaque response). Host reachable but status hidden by CORS.');
+        return results;
+      } else {
+        log('  – No‑CORS fetch failed (' + (r2.error || 'network error') + ')');
+      }
+
+      // Step 3: Favicon image ping (many sites expose it)
+      const fav = ensureFaviconUrl(url);
+      log('• Step 3: Try favicon image: ' + fav);
+      const okImg = await imgPing(fav);
+      if (okImg){
+        results.reachable = true; results.corsLimited = true;
+        log('  ✓ Image loaded – host likely up.');
+      } else {
+        log('  – Image failed to load.');
+      }
+      return results;
+    }
+
+    // ---- UI wiring ----
+    const uaEl = document.getElementById('uaPill');
+    const tmEl = document.getElementById('timePill');
+    function refreshMeta(){ uaEl.textContent = 'Browser: ' + detectBrowser(); tmEl.textContent = 'Time: ' + nowString(); }
+    refreshMeta();
+    setInterval(() => tmEl.textContent = 'Time: ' + nowString(), 1000);
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      document.getElementById('urlInput').value='';
+      document.getElementById('log').textContent='';
+      document.getElementById('summary').hidden = true;
+      document.getElementById('steps').hidden = true;
+      setSummary('', '');
+    });
+
+    document.getElementById('checkForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const raw = document.getElementById('urlInput').value;
+      let url;
+      try{ url = normalizeUrl(raw); }
+      catch(err){ setSummary('bad', err.message); return; }
+
+      // If user typed domain without scheme, also prepare http fallback
+      const alsoHttp = /^https:\/\//i.test(url) ? url.replace(/^https:/,'http:') : null;
+
+      setBusy(true);
+      document.getElementById('log').textContent='';
+      setSummary('', '');
+
+      try{
+        const res = await withTimeout(async () => await check(url), 12000, 'check');
+        if (!res.reachable && alsoHttp){
+          log('• HTTPS failed. Trying HTTP fallback…');
+          const res2 = await withTimeout(async () => await check(alsoHttp), 10000, 'check-http');
+          if (res2.reachable){
+            setSummary('warn', 'Reachable over HTTP only. Consider enabling HTTPS.');
+          } else {
+            setSummary('bad', 'Host is not reachable from this browser.');
+          }
+        } else if (res.reachable && res.corsLimited && res.status == null){
+          setSummary('warn', 'Reachable, but status hidden by CORS. The site responded to our request.');
+        } else if (res.reachable){
+          setSummary('ok', res.status ? ('HTTP ' + res.status + ' received.') : 'Reachable.');
+        } else {
+          setSummary('bad', 'Host is not reachable from this browser.');
+        }
+      } catch(err){
+        setSummary('bad', 'Error: ' + (err && err.message ? err.message : String(err)));
+        log('! Error: ' + (err && err.message ? err.message : String(err)));
+      } finally{
+        setBusy(false);
+      }
+    });
+  </script>
+</body>
+</html>
