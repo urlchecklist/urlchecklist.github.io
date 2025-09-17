@@ -89,6 +89,13 @@
     .footer{
       padding: 0 28px 20px 28px; color:var(--muted); font-size:12px;
     }
+      /* Batch UI */
+    .input textarea { background:transparent; border:none; outline:none; color:var(--text); font-size:14px; width:100%; min-height:130px; resize:vertical; }
+    .tableWrap{ overflow:auto; border:1px solid var(--border); border-radius:10px; }
+    table{ width:100%; border-collapse:collapse; font-size:14px }
+    thead th{ position:sticky; top:0; background:#0b1228; text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); }
+    tbody td{ padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top }
+    .pill.sm{ font-size:12px; padding:4px 8px }
   </style>
 </head>
 <body>
@@ -108,17 +115,40 @@
     </header>
 
     <section class="content">
-      <form id="checkForm" class="row" autocomplete="off">
+      <form id="checkForm" class="row" autocomplete="off" action="#">
         <div class="input" role="group" aria-label="Enter a URL to test">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.9 12a5 5 0 0 1 5-5h1.2M13.9 17a5 5 0 0 1-5 5H7.7" stroke="#9cc7ff" stroke-width="1.3"/><path d="M9 12h6" stroke="#9cc7ff" stroke-width="1.3"/></svg>
           <input id="urlInput" name="url" type="text" inputmode="url" placeholder="https://example.com" aria-label="URL" required />
         </div>
-        <button id="checkBtn" class="btn" type="submit">
+        <button id="checkBtn" class="btn" type="button">
           <span class="spinner" id="spin" style="display:none"></span>
           <span id="btnText">Check now</span>
         </button>
         <button class="btn secondary" type="button" id="resetBtn">Reset</button>
       </form>
+
+      <!-- Batch URL form -->
+      <div class="result">
+        <div class="status">Check multiple URLs</div>
+        <form id="listForm" class="row" autocomplete="off" action="#">
+          <div class="input" style="flex:1 1 100%">
+            <textarea id="listInput" placeholder="One URL per line (paste many too)"></textarea>
+          </div>
+          <button id="listBtn" class="btn" type="button">
+            <span class="spinner" id="spinList" style="display:none"></span>
+            <span id="btnListText">Check list</span>
+          </button>
+          <button class="btn secondary" type="button" id="clearListBtn">Clear</button>
+        </form>
+        <div id="batchBox" class="tableWrap" style="margin-top:10px; display:none">
+          <table id="batchTable" aria-label="Batch results table">
+            <thead>
+              <tr><th style="min-width:360px">URL</th><th>Status</th><th>Notes</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
 
       <div class="meta">
         <span class="pill" id="uaPill"></span>
@@ -295,7 +325,7 @@
       setSummary('', '');
     });
 
-    document.getElementById('checkForm').addEventListener('submit', async (e) => {
+    document.getElementById('checkBtn').addEventListener('click', async (e) => {
       e.preventDefault();
       const raw = document.getElementById('urlInput').value;
       let url;
@@ -332,6 +362,112 @@
       } finally{
         setBusy(false);
       }
+    });
+      function setListBusy(isBusy){
+      document.getElementById('listBtn').disabled = isBusy;
+      const s = document.getElementById('spinList');
+      const t = document.getElementById('btnListText');
+      if (s) s.style.display = isBusy ? 'inline-block' : 'none';
+      if (t) t.textContent = isBusy ? 'Checking…' : 'Check list';
+    }
+
+    // ---- Batch helpers ----
+    function parseList(raw){
+      return (raw || '').split('
+').map(s => s.trim()).filter(Boolean);
+    }
+
+    function addRow(url){
+      const tbody = document.querySelector('#batchTable tbody');
+      const tr = document.createElement('tr');
+      const tdUrl = document.createElement('td');
+      const tdStatus = document.createElement('td');
+      const tdNote = document.createElement('td');
+      tdUrl.textContent = url; tdStatus.innerHTML = '<span class="pill sm">Checking…</span>'; tdNote.textContent = '';
+      tr.append(tdUrl, tdStatus, tdNote); tbody.appendChild(tr);
+      return { tr, tdUrl, tdStatus, tdNote };
+    }
+
+    function setRow(statusCell, noteCell, status, note){
+      const cls = status === 'ok' ? 'ok' : status === 'warn' ? 'warn' : 'bad';
+      statusCell.innerHTML = '<span class="pill sm ' + cls + '" style="border-color:var(--border)">' +
+        (status === 'ok' ? 'Working' : status === 'warn' ? 'Reachable (limited)' : 'Not reachable') + '</span>';
+      noteCell.textContent = note || '';
+    }
+
+    async function checkLight(url){
+      const results = { reachable:false, corsLimited:false, status:null };
+      let r1 = await tryFetch(url, 'cors');
+      if (r1.ok){ results.reachable = true; results.status = r1.status; return results; }
+      let r2 = await tryFetch(url, 'no-cors');
+      if (r2.ok){ results.reachable = true; results.corsLimited = true; return results; }
+      const fav = ensureFaviconUrl(url);
+      const okImg = await imgPing(fav);
+      if (okImg){ results.reachable = true; results.corsLimited = true; }
+      return results;
+    }
+
+    async function checkWithFallback(url){
+      const https = url.startsWith('https://');
+      const httpAlt = https ? ('http://' + url.slice(8)) : null;
+      try{
+        const res = await withTimeout(() => checkLight(url), 12000, 'check');
+        if (!res.reachable && httpAlt){
+          const res2 = await withTimeout(() => checkLight(httpAlt), 10000, 'check-http');
+          if (res2.reachable) return { status:'warn', note:'Reachable over HTTP only' };
+          return { status:'bad', note:'Not reachable' };
+        } else if (res.reachable && res.corsLimited && res.status == null){
+          return { status:'warn', note:'Reachable, status hidden by CORS' };
+        } else if (res.reachable){
+          return { status:'ok', note: res.status ? ('HTTP ' + res.status) : 'Reachable' };
+        } else {
+          return { status:'bad', note:'Not reachable' };
+        }
+      } catch(err){
+        return { status:'bad', note: (err && err.message ? err.message : String(err)) };
+      }
+    }
+
+    document.getElementById('clearListBtn')?.addEventListener('click', () => {
+      const box = document.getElementById('batchBox');
+      const tbody = document.querySelector('#batchTable tbody');
+      document.getElementById('listInput').value='';
+      if (tbody) tbody.innerHTML='';
+      if (box) box.style.display = 'none';
+    });
+
+    document.getElementById('listBtn')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const raw = document.getElementById('listInput').value;
+      const items = parseList(raw);
+      if (!items.length){ alert('Please paste one or more URLs (one per line).'); return; }
+
+      // Normalize and capture invalid entries
+      const urls = []; const bads = [];
+      for (const it of items){
+        try{ urls.push(normalizeUrl(it)); } catch(err){ bads.push({it, err:err.message}); }
+      }
+
+      const tbody = document.querySelector('#batchTable tbody');
+      const box = document.getElementById('batchBox');
+      if (tbody) tbody.innerHTML = '';
+      if (box) box.style.display = 'block';
+      setListBusy(true);
+
+      // Show invalid entries immediately
+      for (const b of bads){
+        const row = addRow(b.it);
+        setRow(row.tdStatus, row.tdNote, 'bad', 'Invalid URL: ' + b.err);
+      }
+
+      // Process sequentially to be gentle on the browser
+      for (const u of urls){
+        const row = addRow(u);
+        const res = await checkWithFallback(u);
+        setRow(row.tdStatus, row.tdNote, res.status, res.note);
+      }
+
+      setListBusy(false);
     });
   </script>
 </body>
